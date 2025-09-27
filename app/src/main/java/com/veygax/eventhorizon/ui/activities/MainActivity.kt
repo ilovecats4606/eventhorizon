@@ -112,8 +112,10 @@ class MainActivity : ComponentActivity() {
         else -> 0
     }
 
-    private fun getVersionIncremental() = Build.VERSION.INCREMENTAL.toLong()
+    internal fun getVersionIncremental() = Build.VERSION.INCREMENTAL.toLong()
 
+
+    
     @RequiresApi(Build.VERSION_CODES.O)
     fun executeExploit(
         context: Context,
@@ -484,73 +486,3 @@ fun EventHorizonApp(
                 }
             )
         }
-    }
-}
-
-@Composable
-fun UpdateDialog(
-    releaseInfo: UpdateManager.ReleaseInfo,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-    isDownloading: Boolean,
-    downloadProgress: Float,
-    statusText: String
-) {
-    AlertDialog(
-        onDismissRequest = { if (!isDownloading) onDismiss() },
-        title = { Text("Update Available: ${releaseInfo.version}") },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                if (!isDownloading) {
-                    Text(
-                        "A new version of eventhorizon is available. Would you like to update?",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "Changelog:",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Text(
-                        releaseInfo.changelog,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 200.dp)
-                            .verticalScroll(rememberScrollState())
-                    )
-                } else {
-                    Text(
-                        text = statusText,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    LinearProgressIndicator(
-                        progress = downloadProgress,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                enabled = !isDownloading
-            ) {
-                Text("Install")
-            }
-        },
-        dismissButton = {
-            Button(
-                onClick = onDismiss,
-                enabled = !isDownloading,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            ) {
-                Text(if (statusText.contains("failed", ignoreCase = true)) "Close" else "Later")
-            }
-        }
-    )
-}
