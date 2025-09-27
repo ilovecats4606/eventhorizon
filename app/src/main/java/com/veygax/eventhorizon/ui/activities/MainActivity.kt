@@ -115,7 +115,6 @@ class MainActivity : ComponentActivity() {
     internal fun getVersionIncremental() = Build.VERSION.INCREMENTAL.toLong()
 
 
-    
     @RequiresApi(Build.VERSION_CODES.O)
     fun executeExploit(
         context: Context,
@@ -186,6 +185,7 @@ fun EventHorizonApp(
     val context = LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("eventhorizon_prefs", Context.MODE_PRIVATE) }
     val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() } // yummy snacks
 
     var rootOnBoot by remember { mutableStateOf(sharedPrefs.getBoolean("root_on_boot", false)) }
     var consoleText by remember { mutableStateOf("") }
@@ -207,6 +207,16 @@ fun EventHorizonApp(
 
     val mainActivity = (LocalContext.current as MainActivity)
 
+    // Patched Dialog
+    var showPatchedDialog by remember { mutableStateOf(false) }
+
+    // Show dialog if patched
+    LaunchedEffect(Unit) {
+        if (mainActivity.isPatched()) {
+            showPatchedDialog = true
+        }
+    }
+    
     // Function to check for updates
     fun checkForUpdate(isManual: Boolean) {
         coroutineScope.launch {
@@ -349,12 +359,12 @@ fun EventHorizonApp(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "⚠️ exploit patched on this device",
+                        text = "⚠️ exploit patched on this device (firmware version is too high)",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
                     Text(
-                        text = "the exploit will NOT work.",
+                        text = "the exploit will NOT work. it has been patched by meta. you will have to wait for a new exploit.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
@@ -365,12 +375,14 @@ fun EventHorizonApp(
 
         Button(
             onClick = {
-                if (!isProcessRunning) {
-                    mainActivity.executeExploit(context, onOutput = { line ->
-                        consoleText += line + "\n"
-                    }, onProcessComplete = {
-                        isProcessRunning = false
-                    })
+                if (mainActivity.isPatched()) {
+                    showPatchedDialog = true
+                } else if (!isProcessRunning) {
+                    mainActivity.executeExploit(
+                        context,
+                        onOutput = { line -> consoleText += line + "\n" },
+                        onProcessComplete = { isProcessRunning = false }
+                    )
                     isProcessRunning = true
                 }
             },
@@ -389,9 +401,17 @@ fun EventHorizonApp(
             ) {
                 Button(
                     onClick = {
-                        val intent = Intent(context, TweaksActivity::class.java)
-                        intent.putExtra("is_rooted", true)
-                        context.startActivity(intent)
+                        if (isRooted) {
+                            val intent = Intent(context, TweaksActivity::class.java)
+                            intent.putExtra("is_rooted", true)
+                            context.startActivity(intent)
+                        } else {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    "AIO tweaks will not work unless EventHorizon has root permissions!"
+                                )
+                            }
+                        }
                     },
                     modifier = Modifier.weight(1f)
                 ) {
@@ -481,6 +501,27 @@ fun EventHorizonApp(
                             url = currentUpdateInfo.downloadUrl,
                             onProgress = { progress -> downloadProgress = progress },
                             onStatusUpdate = { status -> updateStatusText = status }
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    // Patched Dialog
+    if (showPatchedDialog) {
+        val firmwareVersion = mainActivity.getVersionIncremental().toString()
+        AlertDialog(
+            onDismissRequest = { showPatchedDialog = false },
+            title = { Text("this root exploit is patched on this device!") },
+            text = { Text("your firmware version $firmwareVersion has been patched by Meta and you cannot root with this exploit! it will NOT work and CANNOT be supported with this exploit. it is IMPOSSIBLE for this exploit to support this device. no, at this point in time you CANNOT downgrade. you will have to wait for a new exploit.") },
+            confirmButton = {
+                Button(onClick = { showPatchedDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
+tatusText = status }
                         )
                     }
                 }

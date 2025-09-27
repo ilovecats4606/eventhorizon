@@ -546,6 +546,56 @@ fun TweaksScreen(
                             enabled = isRooted
                         )
                     }
+                    TweakCard("Spoof Build Type", "Spoof build type such as userdebug to enable features such as Dogfooding or ShellDebug. This will restart your device's interface.") {
+                        var showCustomDialog by remember { mutableStateOf(false) }
+                        var customType by remember { mutableStateOf("") }
+                        val runSpoof: (String) -> Unit = { type ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                RootUtils.runAsRoot("magisk resetprop ro.build.type $type")
+                                withContext(Dispatchers.Main) {
+                                    snackbarHostState.showSnackbar("Build type spoofed to '$type'. Restarting Zygote...")
+                                RootUtils.runAsRoot("setprop ctl.restart zygote")
+                                }
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { runSpoof("userdebug") },
+                                enabled = isRooted
+                            ) { Text("userdebug") }
+                            Button(
+                                onClick = { showCustomDialog = true },
+                                enabled = isRooted
+                            ) { Text("Custom") }
+                        }
+
+                        if (showCustomDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showCustomDialog = false },
+                                title = { Text("Enter Custom Build Type") },
+                                text = {
+                                    OutlinedTextField(
+                                        value = customType,
+                                        onValueChange = { customType = it },
+                                        label = { Text("Build Type (default is user)") },
+                                        singleLine = true
+                                    )
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            showCustomDialog = false
+                                            runSpoof(if (customType.isNotBlank()) customType else "user")
+                                        }
+                                    ) { Text("OK") }
+                                },
+                                dismissButton = {
+                                    Button(onClick = { showCustomDialog = false }) { Text("Cancel") }
+                                }
+                            )
+                        }
+                    }
                 }
             }
             
