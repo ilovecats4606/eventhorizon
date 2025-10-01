@@ -4,15 +4,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.scottyab.rootbeer.RootBeer
-import com.veygax.eventhorizon.core.AppInterceptor
+import com.veygax.eventhorizon.system.DnsBlockerService
 import com.veygax.eventhorizon.ui.activities.MainActivity
-import com.veygax.eventhorizon.ui.activities.TweakCommands
 import com.veygax.eventhorizon.utils.CpuUtils
 import com.veygax.eventhorizon.utils.RootUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
+import android.util.Log
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -20,11 +21,15 @@ class BootReceiver : BroadcastReceiver() {
             val sharedPrefs = context.getSharedPreferences("eventhorizon_prefs", Context.MODE_PRIVATE)
             val rootOnBoot = sharedPrefs.getBoolean("root_on_boot", false)
             val blockerOnBoot = sharedPrefs.getBoolean("blocker_on_boot", false)
-            val customLedOnBoot = sharedPrefs.getBoolean("custom_led_on_boot", false)
             val rainbowLedOnBoot = sharedPrefs.getBoolean("rgb_on_boot", false)
+            val customLedOnBoot = sharedPrefs.getBoolean("custom_led_on_boot", false)
+            val powerLedOnBoot = sharedPrefs.getBoolean("power_led_on_boot", false)
             val minFreqOnBoot = sharedPrefs.getBoolean("min_freq_on_boot", false)
             val interceptStartupApps = sharedPrefs.getBoolean("intercept_startup_apps", false)
             val wirelessAdbOnBoot = sharedPrefs.getBoolean("wireless_adb_on_boot", false)
+            val cycleWifiOnBoot = sharedPrefs.getBoolean("cycle_wifi_on_boot", false)
+            val isRootBlockerEnabledOnBoot = sharedPrefs.getBoolean("root_blocker_on_boot", false)
+            val usbInterceptorOnBoot = sharedPrefs.getBoolean("usb_interceptor_on_boot", false)
             val scope = CoroutineScope(Dispatchers.IO)
 
             // --- Activity Boot Logic ---
@@ -54,42 +59,40 @@ class BootReceiver : BroadcastReceiver() {
                 context.startActivity(startIntent)
             }
 
-            // --- LED Boot Logic ---
+            // --- LED Boot Logic --- (Using TweakService)
             if (customLedOnBoot) {
-                // If custom color on boot is enabled, run its persistent script
-                scope.launch {
-                    val r = sharedPrefs.getInt("led_red", 255)
-                    val g = sharedPrefs.getInt("led_green", 255)
-                    val b = sharedPrefs.getInt("led_blue", 255)
-                    val scriptFile = File(context.filesDir, "custom_led.sh")
-                    val customColorScript = """
-                        #!/system/bin/sh
-                        while true; do
-                            echo $r > /sys/class/leds/red/brightness
-                            echo $g > /sys/class/leds/green/brightness
-                            echo $b > /sys/class/leds/blue/brightness
-                            sleep 1
-                        done
-                    """.trimIndent()
-                    scriptFile.writeText(customColorScript)
-                    RootUtils.runAsRoot("chmod +x ${scriptFile.absolutePath}")
-                    RootUtils.runAsRoot("${scriptFile.absolutePath} &")
+                // Use TweakService to start custom color
+                val r = sharedPrefs.getInt("led_red", 255)
+                val g = sharedPrefs.getInt("led_green", 255)
+                val b = sharedPrefs.getInt("led_blue", 255)
+
+                val serviceIntent = Intent(context, TweakService::class.java).apply {
+                    action = TweakService.ACTION_START_CUSTOM_LED
+                    putExtra("RED", r)
+                    putExtra("GREEN", g)
+                    putExtra("BLUE", b)
                 }
+                context.startService(serviceIntent)
+
             } else if (rainbowLedOnBoot) {
-                // Otherwise, if rainbow on boot is enabled, run its script
-                scope.launch {
-                    val scriptFile = File(context.filesDir, "rgb_led.sh")
-                    scriptFile.writeText(TweakCommands.RGB_SCRIPT)
-                    RootUtils.runAsRoot("chmod +x ${scriptFile.absolutePath}")
-                    RootUtils.runAsRoot("${scriptFile.absolutePath} &")
+                val serviceIntent = Intent(context, TweakService::class.java).apply {
+                    action = TweakService.ACTION_START_RGB
                 }
+                context.startService(serviceIntent)
+
+            } else if (powerLedOnBoot) { // <-- This is the new, required block
+                val serviceIntent = Intent(context, TweakService::class.java).apply {
+                    action = TweakService.ACTION_START_POWER_LED
+                }
+                context.startService(serviceIntent)
             }
 
-            // --- CPU Lock Boot Logic ---
+            // --- CPU Lock Boot Logic (Using TweakService) ---
             if (minFreqOnBoot) {
-                scope.launch {
-                    CpuUtils.startMinFreqLock(context)
+                val serviceIntent = Intent(context, TweakService::class.java).apply {
+                    action = TweakService.ACTION_START_MIN_FREQ
                 }
+                context.startService(serviceIntent)
             }
 
             // --- Wireless ADB Boot Logic ---
@@ -100,10 +103,89 @@ class BootReceiver : BroadcastReceiver() {
                 }
             }
 
-            // --- Intercept Startup Apps Logic ---
+            // --- Intercept Startup Apps Logic (Using TweakService) ---
             if (interceptStartupApps) {
-                // The start() method handles its own coroutine, so no need to wrap it here.
-                AppInterceptor.start(context)
+                val serviceIntent = Intent(context, TweakService::class.java).apply {
+                    action = TweakService.ACTION_START_INTERCEPTOR
+                }
+                context.startService(serviceIntent)
+            }
+
+            // --- Wi-Fi Cycle on Boot Logic ---
+            if (cycleWifiOnBoot) {
+                scope.launch {
+                    RootUtils.runAsRoot("svc wifi disable")
+                    // Wait for a few seconds before turning it back on
+                    kotlinx.coroutines.delay(3000) // 3-second delay
+                    RootUtils.runAsRoot("svc wifi enable")
+                }
+            }
+
+            if (isRootBlockerEnabledOnBoot) {
+                Log.i("BootReceiver", "Root blocker enabled. Starting kill switch...")
+
+                // 1. Start the kill switch immediately (blocks internet until root mount is ready)
+                val serviceIntent = Intent(context, DnsBlockerService::class.java).apply {
+                    action = DnsBlockerService.ACTION_START
+                }
+                context.startService(serviceIntent)
+
+                // 2. Switch to root blocker only if root is available
+                scope.launch {
+                    delay(5000) // let system settle a bit
+
+                    if (RootUtils.isRootAvailable()) {
+                        Log.i("BootReceiver", "Root available, copying hosts file...")
+
+                        val hostsFile = File("/data/adb/eventhorizon/hosts")
+                        if (!hostsFile.exists()) {
+                            try {
+                                Log.d("BootReceiver", "Starting to copy hosts file from assets...")
+                                val assetPath = "hosts/hosts"
+                                val inputStream = context.assets.open(assetPath)
+                                val hostsContent = inputStream.bufferedReader().use { it.readText() }
+                                val tempFile = File(context.cacheDir, "hosts_temp")
+                                tempFile.writeText(hostsContent)
+
+                                val moduleDir = "/data/adb/eventhorizon"
+                                val finalHostsPath = "$moduleDir/hosts"
+                                val commands = """
+                                    mkdir -p $moduleDir
+                                    mv ${tempFile.absolutePath} $finalHostsPath
+                                    chmod 644 $finalHostsPath
+                                """.trimIndent()
+
+                                RootUtils.runAsRoot(commands)
+                                Log.d("BootReceiver", "Hosts file successfully copied to $finalHostsPath")
+                            } catch (e: Exception) {
+                                Log.e("BootReceiver", "Error copying hosts file", e)
+                            }
+                        }
+
+                        RootUtils.runAsRoot(
+                            "umount -l /system/etc/hosts; mount -o bind /data/adb/eventhorizon/hosts /system/etc/hosts",
+                            useMountMaster = true
+                        )
+                        Log.i("BootReceiver", "Hosts file mounted.")
+
+                        // Stop VPN kill switch now that root blocker is active
+                        val stopIntent = Intent(context, DnsBlockerService::class.java).apply {
+                            action = DnsBlockerService.ACTION_STOP
+                        }
+                        context.startService(stopIntent)
+                        Log.i("BootReceiver", "Kill switch stopped. Root blocker active.")
+                    } else {
+                        Log.w("BootReceiver", "Root not available at boot. Leaving kill switch ON.")
+                        // Do nothing else — kill switch stays active
+                    }
+                }
+            }
+
+            if (usbInterceptorOnBoot) {
+                val serviceIntent = Intent(context, TweakService::class.java).apply {
+                    action = TweakService.ACTION_START_USB_INTERCEPTOR
+                }
+                context.startService(serviceIntent)
             }
         }
     }

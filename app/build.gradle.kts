@@ -44,7 +44,9 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
-    
+
+    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
+
     val composeBom = platform("androidx.compose:compose-bom:2024.05.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)

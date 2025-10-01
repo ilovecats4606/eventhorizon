@@ -26,8 +26,8 @@ object CpuUtils {
     private val LITTLE_CORE_PATHS = (0..3).map { "/sys/devices/system/cpu/cpu$it/cpufreq/scaling_min_freq" }
     private val BIG_CORE_PATHS = (4..6).map { "/sys/devices/system/cpu/cpu$it/cpufreq/scaling_min_freq" }
     
-    private const val DEFAULT_LITTLE_FREQ = "691200"
-    private const val DEFAULT_BIG_FREQ = "691200"
+    const val DEFAULT_LITTLE_FREQ = "691200" // Kept public for TweakService
+    const val DEFAULT_BIG_FREQ = "691200" // Kept public for TweakService
 
     // --- CPU Usage Calculation Properties ---
     private data class CoreStat(val idle: Long, val total: Long)
@@ -130,23 +130,5 @@ object CpuUtils {
                 sleep 2
             done
         """.trimIndent()
-    }
-
-    suspend fun startMinFreqLock(context: Context, littleFreq: String = DEFAULT_LITTLE_FREQ, bigFreq: String = DEFAULT_BIG_FREQ) {
-        Log.d(TAG, "Attempting to start Min Freq script...")
-        val scriptFile = File(context.filesDir, SCRIPT_NAME)
-        val scriptContent = getMinFreqScript(littleFreq, bigFreq)
-        scriptFile.writeText(scriptContent)
-        RootUtils.runAsRoot("chmod +x ${scriptFile.absolutePath}")
-        // Ensure only one instance is running
-        stopMinFreqLock()
-        RootUtils.runAsRoot("${scriptFile.absolutePath} &")
-        Log.d(TAG, "Start command issued for Min Freq script.")
-    }
-
-    suspend fun stopMinFreqLock() {
-        Log.d(TAG, "Attempting to stop Min Freq script...")
-        RootUtils.runAsRoot("pkill -f $SCRIPT_NAME || true")
-        Log.d(TAG, "Stop command issued for Min Freq script.")
     }
 }

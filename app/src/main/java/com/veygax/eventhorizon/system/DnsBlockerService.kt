@@ -1,121 +1,100 @@
 package com.veygax.eventhorizon.system
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import com.veygax.eventhorizon.R
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import java.net.URL
-import java.util.concurrent.ConcurrentHashMap
 
 class DnsBlockerService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
-    private val serviceJob = Job()
-    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
     companion object {
-        private const val TAG = "DnsBlockerService"
-        
-        const val ACTION_START = "com.veygax.eventhorizon.START_VPN"
-        const val ACTION_STOP = "com.veygax.eventhorizon.STOP_VPN"
-        private const val BLOCKLIST_URL = "https://raw.githubusercontent.com/Lumince/eventhorizon/refs/heads/main/hosts"
-        
-        private val blocklist = ConcurrentHashMap.newKeySet<String>()
-        var isRunning = false
-
-        fun isDomainBlocked(domain: String): Boolean {
-            return blocklist.contains(domain)
-        }
+        private const val TAG = "KillSwitchVpnService"
+        const val ACTION_START = "com.veygax.eventhorizon.START_KILL_SWITCH"
+        const val ACTION_STOP = "com.veygax.eventhorizon.STOP_KILL_SWITCH"
+        private const val NOTIFICATION_CHANNEL_ID = "kill_switch_channel"
+        private const val NOTIFICATION_ID = 4
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand received: ${intent?.action}")
         when (intent?.action) {
-            ACTION_START -> {
-                if (!isRunning) {
-                    isRunning = true
-                    Log.d(TAG, "Starting VPN service...")
-                    serviceScope.launch {
-                        loadBlocklist()
-                        startVpn()
-                    }
-                }
-            }
-            ACTION_STOP -> {
-                Log.d(TAG, "Stopping VPN service...")
-                stopVpn()
-            }
+            ACTION_START -> startKillSwitch()
+            ACTION_STOP -> stopKillSwitch()
         }
         return START_STICKY
     }
 
-    private suspend fun loadBlocklist() {
-        Log.d(TAG, "Loading blocklist from URL...")
-        try {
-            val lines = URL(BLOCKLIST_URL).readText().lines()
-            blocklist.clear()
-            lines.forEach { line ->
-                val parts = line.split("\\s+".toRegex())
-                if (parts.size >= 2) {
-                    blocklist.add(parts[1].trim())
-                }
-            }
-            Log.d(TAG, "Blocklist loaded successfully with ${blocklist.size} entries.")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load blocklist", e)
-        }
-    }
-
-    private fun startVpn() {
+    private fun startKillSwitch() {
         if (vpnInterface != null) {
-            Log.d(TAG, "VPN already started.")
+            Log.d(TAG, "Kill switch is already running.")
             return
         }
-        Log.d(TAG, "Establishing VPN tunnel...")
+
+        startForeground(NOTIFICATION_ID, buildNotification())
+
+        // This builder creates a VPN that routes all traffic to itself.
+        // Because we never read or write packets, all traffic is dropped.
         val builder = Builder()
-            .setSession(getString(R.string.app_name))
-            // FIX: Add a local address for the VPN interface
-            .addAddress("10.0.0.2", 24) 
-            .addDnsServer("8.8.8.8")
-            .addDnsServer("1.1.1.1")
-            .addRoute("0.0.0.0", 0)
+            .setSession(getString(R.string.app_name) + " Kill Switch")
+            .addAddress("10.8.0.2", 24)
+            .addRoute("0.0.0.0", 0) // Route all traffic
 
         vpnInterface = builder.establish()
-        if (vpnInterface != null) {
-            Log.d(TAG, "VPN tunnel established successfully.")
+        if (vpnInterface == null) {
+            Log.e(TAG, "Failed to establish VPN interface for kill switch.")
+            stopKillSwitch()
         } else {
-            Log.e(TAG, "Failed to establish VPN tunnel.")
-            stopVpn()
+            Log.i(TAG, "Internet kill switch is now ACTIVE.")
         }
     }
 
-    private fun stopVpn() {
-        isRunning = false
-        serviceJob.cancel()
+    private fun stopKillSwitch() {
+        Log.i(TAG, "Internet kill switch is being deactivated.")
         try {
             vpnInterface?.close()
         } catch (e: Exception) {
-            Log.e(TAG, "Error closing VPN interface", e)
+            Log.e(TAG, "Error closing VPN interface.", e)
         }
         vpnInterface = null
+        stopForeground(true)
         stopSelf()
-        Log.d(TAG, "VPN service stopped.")
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        Log.d(TAG, "onDestroy called.")
-        stopVpn()
     }
 
     override fun onRevoke() {
-        super.onRevoke()
         Log.w(TAG, "VPN revoked by system!")
-        stopVpn()
+        stopKillSwitch()
+        super.onRevoke()
+    }
+    
+    // --- Notification Boilerplate ---
+    private fun buildNotification(): Notification {
+        createNotificationChannel()
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("EventHorizon Kill Switch")
+            .setContentText("Internet access is temporarily blocked.")
+            .setSmallIcon(R.drawable.ic_launcher_foreground) // Use a suitable icon
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                "Kill Switch Service",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
+        }
     }
 }
