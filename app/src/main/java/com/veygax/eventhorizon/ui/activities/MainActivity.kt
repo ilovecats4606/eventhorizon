@@ -203,7 +203,9 @@ fun EventHorizonApp(
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableStateOf(0f) }
     var updateStatusText by remember { mutableStateOf("") }
-    // --- End of Updater State ---
+    var autoCheckUpdates by remember { mutableStateOf(sharedPrefs.getBoolean("auto_check_updates", true)) }
+    var showUpdateOptionsDialog by remember { mutableStateOf(false) }
+    var updateChannel by remember { mutableStateOf(sharedPrefs.getString("update_channel", "stable") ?: "stable") }
 
     // --- Animation State for Update Icon ---
     val rotationAngle = remember { Animatable(0f) }
@@ -225,7 +227,11 @@ fun EventHorizonApp(
             }
 
             isCheckingForUpdate = true
-            val release = UpdateManager.checkForUpdate(context)
+            val (owner, repo) = when (updateChannel) {
+                "dev" -> "Lumince" to "eventhorizon"
+                else -> "veygax" to "eventhorizon"
+            }
+            val release = UpdateManager.checkForUpdate(context, owner, repo)
             isCheckingForUpdate = false
             if (release != null) {
                 updateInfo = release
@@ -237,9 +243,10 @@ fun EventHorizonApp(
     }
 
     LaunchedEffect(Unit) {
-        // Automatically check for updates on startup
         isRooted = RootUtils.isRootAvailable()
-        checkForUpdate(isManual = false)
+        if (autoCheckUpdates) {
+            checkForUpdate(isManual = false)
+        }
     }
 
     LaunchedEffect(autoRootOnStart) {
@@ -279,12 +286,12 @@ fun EventHorizonApp(
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clickable(enabled = !isCheckingForUpdate) { checkForUpdate(isManual = true) },
+                    .clickable { showUpdateOptionsDialog = true },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Sync,
-                    contentDescription = "Check for Updates",
+                    contentDescription = "Updater",
                     modifier = Modifier
                         .size(28.dp)
                         .rotate(rotationAngle.value),
@@ -496,7 +503,31 @@ fun EventHorizonApp(
             )
         }
     }
+    if (showUpdateOptionsDialog) {
+        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        val currentVersion = packageInfo.versionName ?: "Unknown"
+
+        UpdateOptionsDialog(
+            autoCheckUpdates = autoCheckUpdates,
+            currentVersion = currentVersion,
+            updateChannel = updateChannel,
+            onChannelChanged = { newChannel ->
+                updateChannel = newChannel
+                sharedPrefs.edit().putString("update_channel", newChannel).apply()
+            },
+            onAutoCheckChanged = { checked ->
+                autoCheckUpdates = checked
+                sharedPrefs.edit().putBoolean("auto_check_updates", checked).apply()
+            },
+            onCheckNow = {
+                showUpdateOptionsDialog = false
+                checkForUpdate(isManual = true)
+            },
+            onDismiss = { showUpdateOptionsDialog = false }
+        )
+    }
 }
+
 
 @Composable
 fun UpdateDialog(
@@ -562,6 +593,108 @@ fun UpdateDialog(
             ) {
                 Text(if (statusText.contains("failed", ignoreCase = true)) "Close" else "Later")
             }
+        }
+    )
+}
+
+@Composable
+fun UpdateOptionsDialog(
+    autoCheckUpdates: Boolean,
+    currentVersion: String,
+    updateChannel: String,
+    onChannelChanged: (String) -> Unit,
+    onAutoCheckChanged: (Boolean) -> Unit,
+    onCheckNow: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(
+                    "Update Options",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.wrapContentHeight()
+            ) {
+                // Current version
+                Text(
+                    text = "Current version: v$currentVersion",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // --- Channel Selector ---
+                Text(
+                    "Update Channel:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { onChannelChanged("stable") },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (updateChannel == "stable") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                            contentColor = if (updateChannel == "stable") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Text("Stable")
+                    }
+                    Button(
+                        onClick = { onChannelChanged("dev") },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (updateChannel == "dev") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                            contentColor = if (updateChannel == "dev") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Text("Dev")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // --- Check now ---
+                Button(
+                    onClick = onCheckNow,
+                    modifier = Modifier.wrapContentWidth()
+                ) {
+                    Text("Check for Updates")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // --- Auto check toggle ---
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        "Check for updates on startup",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = autoCheckUpdates,
+                        onCheckedChange = { checked -> onAutoCheckChanged(checked) }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) { Text("Close") }
         }
     )
 }

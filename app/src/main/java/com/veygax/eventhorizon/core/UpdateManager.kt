@@ -21,12 +21,10 @@ object UpdateManager {
      * Checks GitHub for the latest release and compares it with the current app version.
      * @return ReleaseInfo if a newer version is found, otherwise null.
      */
-    suspend fun checkForUpdate(context: Context): ReleaseInfo? {
+    suspend fun checkForUpdate(context: Context, owner: String, repo: String): ReleaseInfo? {
         return withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
-                val owner = "veygax"
-                val repo = "eventhorizon"
                 val apiUrl = "https://api.github.com/repos/$owner/$repo/releases/latest"
 
                 val url = URL(apiUrl)
