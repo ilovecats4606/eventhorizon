@@ -118,6 +118,12 @@ class MainActivity : ComponentActivity() {
 
     fun getVersionIncremental() = Build.VERSION.INCREMENTAL.toLong()
 
+    fun getDeviceName(): String = Build.PRODUCT
+
+    fun isSupportedDevice(): Boolean {
+        return getDeviceName() == "eureka" || getDeviceName() == "panther"
+    }
+
     @RequiresApi(Build.VERSION_CODES.O)
     fun executeExploit(
         context: Context,
@@ -379,6 +385,34 @@ fun EventHorizonApp(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
+    if (!mainActivity.isSupportedDevice()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "⚠️ Exploit doesn't support this device",
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Text(
+                    text = "The exploit will NOT work on this headset",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Text(
+                    text = "Headset: ${mainActivity.getDeviceName()}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+    }
+
         Button(
             onClick = {
                 if (!isProcessRunning) {
@@ -391,7 +425,7 @@ fun EventHorizonApp(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !isProcessRunning && !isRooted && !mainActivity.isPatched()
+            enabled = !isProcessRunning && !isRooted && !mainActivity.isPatched() && mainActivity.isSupportedDevice()
         ) {
             Text(if (isProcessRunning) "Rooting..." else "Root Now")
         }
