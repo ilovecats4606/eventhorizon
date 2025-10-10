@@ -395,8 +395,7 @@ fun TweaksScreen(
     fun getInitialState(key: String, defaultValue: Boolean = false): Boolean =
         sharedPrefs.getBoolean(key, defaultValue)
 
-    // --- State Initialization (OPTIMIZED: Set toggle states based on saved 'On Boot' preference) ---
-
+    // --- State Initialization ---
     // LED Tweaks
     val initialRgbLedOnBoot = getInitialState("rgb_on_boot")
     val initialCustomLedOnBoot = getInitialState("custom_led_on_boot")
@@ -418,7 +417,7 @@ fun TweaksScreen(
     val initialBlockerOnBoot = getInitialState("blocker_on_boot")
     val initialBlockerIsRunning = getInitialState("blocker_is_running", initialBlockerOnBoot)
     var blockerOnBoot by rememberSaveable { mutableStateOf(initialBlockerOnBoot) }
-    var isBlockerEnabled by remember { mutableStateOf(initialBlockerIsRunning) } 
+    var isBlockerEnabled by remember { mutableStateOf(initialBlockerIsRunning) }
 
     // Domain Blocker
     val initialRootBlockerOnBoot = getInitialState("root_blocker_on_boot")
@@ -435,7 +434,7 @@ fun TweaksScreen(
 
     // Wireless ADB
     val initialWirelessAdbOnBootState = getInitialState("wireless_adb_on_boot")
-    val initialWirelessAdbIsRunning = getInitialState("wireless_adb_is_running", initialWirelessAdbOnBootState) 
+    val initialWirelessAdbIsRunning = getInitialState("wireless_adb_is_running", initialWirelessAdbOnBootState)
     var isWirelessAdbEnabled by remember { mutableStateOf(initialWirelessAdbIsRunning) }
     var wifiIpAddress by remember { mutableStateOf("N/A") }
     var wirelessAdbOnBoot by rememberSaveable { mutableStateOf(initialWirelessAdbOnBootState) }
@@ -457,7 +456,7 @@ fun TweaksScreen(
     // Proximity Sensor
     val initialProxSensorDisabledState = getInitialState("prox_sensor_disabled")
     var proxSensorOnBoot by rememberSaveable { mutableStateOf(getInitialState("prox_sensor_on_boot")) }
-    var isProxSensorDisabled by remember { mutableStateOf(initialProxSensorDisabledState) } // Proxy sensor disabled is the state that matters
+    var isProxSensorDisabled by remember { mutableStateOf(initialProxSensorDisabledState) }
 
     // --- Lock Update Folders
     val initialLockUpdateFolders = sharedPrefs.getBoolean("lock_update_folders", false)
@@ -512,7 +511,26 @@ fun TweaksScreen(
                 if (isRooted) {
                     // Use bulk status check on resume for script and root states
                     coroutineScope.launch {
-                        val states = StatusChecks.loadAllToggleStates() 
+                        val states = StatusChecks.loadAllToggleStates()
+                        
+                        // --- START: Update SharedPreferences on Resume ---
+                        with(sharedPrefs.edit()) {
+                            putBoolean("rgb_led_is_running", states.isRainbowLedActive)
+                            putBoolean("custom_led_is_running", states.isCustomLedActive)
+                            putBoolean("power_led_is_running", states.isPowerLedActive)
+                            putBoolean("min_freq_is_running", states.isMinFreqExecuting)
+                            putBoolean("intercept_startup_apps", states.isInterceptorEnabled)
+                            putBoolean("root_blocker_is_running", states.isRootBlockerManuallyEnabled)
+                            putBoolean("wireless_adb_is_running", states.isWirelessAdbEnabled)
+                            putBoolean("lock_update_folders_is_locked", states.areUpdateFoldersLocked)
+                            putInt("ui_switch_state", states.uiSwitchState)
+                            putBoolean("transition_void_enabled", states.isVoidTransitionEnabled)
+                            putBoolean("teleport_limit_disabled", states.isTeleportLimitDisabled)
+                            putBoolean("navigator_fog_enabled", states.isNavigatorFogEnabled)
+                            putBoolean("panel_scaling_enabled", states.isPanelScalingEnabled)
+                            putBoolean("infinite_panels_enabled", states.isInfinitePanelsEnabled)
+                            apply()
+                        }
                         
                         withContext(Dispatchers.Main) {
                             isRainbowLedActive = states.isRainbowLedActive
@@ -584,23 +602,38 @@ fun TweaksScreen(
             withContext(Dispatchers.IO) {
                 // Initial state check for non-root services
                 isBlockerEnabled = isDnsServiceRunning()
-                
+
                 // Perform the fast bulk check in the background
                 val states = StatusChecks.loadAllToggleStates()
                 
-                // Update the UI states based on the combined result (Correction step)
-                // This updates the UI if the saved preference (used for instant display) was incorrect.
+                // --- START: Update SharedPreferences on Initial Load ---
+                with(sharedPrefs.edit()) {
+                    putBoolean("rgb_led_is_running", states.isRainbowLedActive)
+                    putBoolean("custom_led_is_running", states.isCustomLedActive)
+                    putBoolean("power_led_is_running", states.isPowerLedActive)
+                    putBoolean("min_freq_is_running", states.isMinFreqExecuting)
+                    putBoolean("intercept_startup_apps", states.isInterceptorEnabled)
+                    putBoolean("root_blocker_is_running", states.isRootBlockerManuallyEnabled)
+                    putBoolean("wireless_adb_is_running", states.isWirelessAdbEnabled)
+                    putBoolean("lock_update_folders_is_locked", states.areUpdateFoldersLocked)
+                    putInt("ui_switch_state", states.uiSwitchState)
+                    putBoolean("transition_void_enabled", states.isVoidTransitionEnabled)
+                    putBoolean("teleport_limit_disabled", states.isTeleportLimitDisabled)
+                    putBoolean("navigator_fog_enabled", states.isNavigatorFogEnabled)
+                    putBoolean("panel_scaling_enabled", states.isPanelScalingEnabled)
+                    putBoolean("infinite_panels_enabled", states.isInfinitePanelsEnabled)
+                    apply()
+                }
+                
                 activity.isRainbowLedActiveState.value = states.isRainbowLedActive
                 activity.isCustomLedActiveState.value = states.isCustomLedActive
                 activity.isPowerLedActiveState.value = states.isPowerLedActive
                 isMinFreqExecuting = states.isMinFreqExecuting
                 isInterceptorEnabled = states.isInterceptorEnabled
-                isRootBlockerManuallyEnabled = states.isRootBlockerManuallyEnabled // Final correction
+                isRootBlockerManuallyEnabled = states.isRootBlockerManuallyEnabled
                 isCpuPerfMode = states.isCpuPerfMode
                 isWirelessAdbEnabled = states.isWirelessAdbEnabled
                 isLockUpdateFoldersActive = states.areUpdateFoldersLocked
-
-                // Also update the oculuspreferences states
                 uiSwitchState = states.uiSwitchState
                 isVoidTransitionEnabled = states.isVoidTransitionEnabled
                 isTeleportLimitDisabled = states.isTeleportLimitDisabled
@@ -614,7 +647,7 @@ fun TweaksScreen(
                 withContext(Dispatchers.IO) {
                     cpuMonitorInfo = CpuUtils.getCpuMonitorInfo()
                 }
-                delay(2000) // Refresh every 2 seconds
+                delay(2000)
             }
         }
     }
