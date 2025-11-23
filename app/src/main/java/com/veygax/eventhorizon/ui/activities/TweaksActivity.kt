@@ -50,10 +50,12 @@ import com.veygax.eventhorizon.utils.GpuMonitorInfo
 import com.veygax.eventhorizon.utils.GpuUtils
 import com.veygax.eventhorizon.utils.RootUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 object StatusChecks {
@@ -417,6 +419,21 @@ fun TweaksScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    var activeSnackbarJob by remember { mutableStateOf<Job?>(null) }
+    val showSnack: (String) -> Unit = { message ->
+        activeSnackbarJob?.cancel()
+        activeSnackbarJob = coroutineScope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            withTimeoutOrNull(2000) { 
+                snackbarHostState.showSnackbar(
+                    message = message,
+                    duration = SnackbarDuration.Indefinite
+                )
+            }
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
+
     val context = LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("eventhorizon_prefs", Context.MODE_PRIVATE) }
     val scriptFile = remember { File(context.filesDir, "rgb_led.sh") }
@@ -592,7 +609,7 @@ fun TweaksScreen(
                             } else {
                                 Log.d("StatusChecks", "Skipping custom LED bulk check and showed snackbar.")
                                 activity.justLaunchedCustomLed = false
-                                snackbarHostState.showSnackbar("Custom LED started")
+                                showSnack("Custom LED started")
                             }
                             isPowerLedActive = states.isPowerLedActive
                             isMinFreqExecuting = states.isMinFreqExecuting
@@ -793,7 +810,7 @@ fun TweaksScreen(
                                                         customLedOnBoot = false
                                                     }
                                                     editor.apply()
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar(if (checked) "Rainbow LED on Boot Enabled" else "Rainbow LED on Boot Disabled") }
+                                                    showSnack(if (checked) "Rainbow LED on Boot Enabled" else "Rainbow LED on Boot Disabled")
                                                 },
                                                 enabled = isRooted
                                             )
@@ -812,12 +829,12 @@ fun TweaksScreen(
                                                         apply()
                                                     }
                                                     activity.startTweakServiceAction(TweakService.ACTION_START_RGB)
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar("Rainbow LED started") }
+                                                    showSnack("Rainbow LED started")
                                                 } else {
                                                     isRainbowLedActive = false
                                                     sharedPrefs.edit().putBoolean("rgb_led_is_running", false).apply()
                                                     activity.startTweakServiceAction(TweakService.ACTION_STOP_RGB)
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar("Rainbow LED stopped") }
+                                                    showSnack("Rainbow LED stopped")
                                                 }
                                             },
                                             enabled = isRooted,
@@ -849,7 +866,7 @@ fun TweaksScreen(
                                                         customLedOnBoot = false
                                                     }
                                                     editor.apply()
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar(if (isEnabled) "Power LED on Boot Enabled" else "Power LED on Boot Disabled") }
+                                                    showSnack(if (isEnabled) "Power LED on Boot Enabled" else "Power LED on Boot Disabled")
                                                 },
                                                 enabled = isRooted
                                             )
@@ -868,12 +885,12 @@ fun TweaksScreen(
                                                         apply()
                                                     }
                                                     activity.startTweakServiceAction(TweakService.ACTION_START_POWER_LED)
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar("Power LED started") }
+                                                    showSnack("Power LED started")
                                                 } else {
                                                     isPowerLedActive = false
                                                     sharedPrefs.edit().putBoolean("power_led_is_running", false).apply()
                                                     activity.startTweakServiceAction(TweakService.ACTION_STOP_POWER_LED)
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar("Power LED stopped") }
+                                                    showSnack("Power LED stopped")
                                                 }
                                             },
                                             enabled = isRooted,
@@ -905,7 +922,7 @@ fun TweaksScreen(
                                                         powerLedOnBoot = false
                                                     }
                                                     editor.apply()
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar(if (isEnabled) "Custom LED on Boot Enabled" else "Custom LED on Boot Disabled") }
+                                                    showSnack(if (isEnabled) "Custom LED on Boot Enabled" else "Custom LED on Boot Disabled")
                                                 },
                                                 enabled = isRooted
                                             )
@@ -916,7 +933,7 @@ fun TweaksScreen(
                                                     isCustomLedActive = false
                                                     sharedPrefs.edit().putBoolean("custom_led_is_running", false).apply()
                                                     activity.startTweakServiceAction(TweakService.ACTION_STOP_CUSTOM_LED)
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar("Custom LED stopped") }
+                                                    showSnack("Custom LED stopped")
                                                 } else {
                                                     isCustomLedActive = true
                                                     isRainbowLedActive = false
@@ -960,7 +977,7 @@ fun TweaksScreen(
                                                 onCheckedChange = { checked ->
                                                     passthroughFixOnBoot = checked
                                                     sharedPrefs.edit().putBoolean("passthrough_fix_on_boot", checked).apply()
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar(if (checked) "Passthrough Fix on Boot Enabled" else "Passthrough Fix on Boot Disabled") }
+                                                    showSnack(if (checked) "Passthrough Fix on Boot Enabled" else "Passthrough Fix on Boot Disabled")
                                                 },
                                                 enabled = isRooted
                                             )
@@ -995,7 +1012,7 @@ fun TweaksScreen(
                                                         editor.putBoolean("blocker_on_boot", checked)
                                                         editor.putBoolean("root_blocker_on_boot", checked)
                                                         editor.apply()
-                                                        coroutineScope.launch { snackbarHostState.showSnackbar(if (checked) "Blocker on Boot Enabled" else "Blocker on Boot Disabled") }
+                                                        showSnack(if (checked) "Blocker on Boot Enabled" else "Blocker on Boot Disabled")
                                                     }
                                                 )
                                             }
@@ -1034,7 +1051,7 @@ fun TweaksScreen(
                                                         editor.putBoolean("root_blocker_on_boot", isEnabled)
                                                         editor.putBoolean("blocker_on_boot", isEnabled)
                                                         editor.apply()
-                                                        coroutineScope.launch { snackbarHostState.showSnackbar(if (isEnabled) "Blocker on Boot Enabled" else "Blocker on Boot Disabled") }
+                                                        showSnack(if (isEnabled) "Blocker on Boot Enabled" else "Blocker on Boot Disabled")
                                                     }
                                                 )
                                             }
@@ -1053,14 +1070,14 @@ fun TweaksScreen(
                                                                 isRootBlockerManuallyEnabled = isSuccess
                                                                 sharedPrefs.edit().putBoolean("root_blocker_is_running", isSuccess).apply()
                                                                 if (isSuccess) {
-                                                                    snackbarHostState.showSnackbar("Root domain blocker enabled")
+                                                                    showSnack("Root domain blocker enabled")
                                                                 } else {
-                                                                    snackbarHostState.showSnackbar("Root domain blocker failed to enable")
+                                                                    showSnack("Root domain blocker failed to enable")
                                                                 }
                                                             } else {
                                                                 activity.disableRootBlocker()
                                                                 sharedPrefs.edit().putBoolean("root_blocker_is_running", false).apply()
-                                                                snackbarHostState.showSnackbar("Root blocker disabled")
+                                                                showSnack("Root blocker disabled")
                                                             }
                                                         }
                                                     },
@@ -1095,7 +1112,7 @@ fun TweaksScreen(
                                                 onCheckedChange = { checked ->
                                                     wirelessAdbOnBoot = checked
                                                     sharedPrefs.edit().putBoolean("wireless_adb_on_boot", checked).apply()
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar(if (checked) "Wireless ADB on Boot Enabled" else "Wireless ADB on Boot Disabled") }
+                                                    showSnack(if (checked) "Wireless ADB on Boot Enabled" else "Wireless ADB on Boot Disabled")
                                                 },
                                                 enabled = isRooted
                                             )
@@ -1116,7 +1133,7 @@ fun TweaksScreen(
                                                         RootUtils.runAsRoot("setprop service.adb.tcp.port $port")
                                                         RootUtils.runAsRoot("stop adbd && start adbd")
                                                         withContext(Dispatchers.Main) {
-                                                            snackbarHostState.showSnackbar(if (isEnabled) "Wireless ADB Enabled" else "Wireless ADB Disabled")
+                                                            showSnack(if (isEnabled) "Wireless ADB Enabled" else "Wireless ADB Disabled")
                                                         }
                                                     }
                                                 },
@@ -1140,7 +1157,7 @@ fun TweaksScreen(
                                                     activity.startTweakServiceAction(TweakService.ACTION_STOP_INTERCEPTOR)
                                                 }
                                                 withContext(Dispatchers.Main) {
-                                                    snackbarHostState.showSnackbar(if (isEnabled) "App Interceptor Enabled" else "App Interceptor Disabled")
+                                                    showSnack(if (isEnabled) "App Interceptor Enabled" else "App Interceptor Disabled")
                                                 }
                                             }
                                         },
@@ -1161,10 +1178,14 @@ fun TweaksScreen(
                                             coroutineScope.launch(Dispatchers.IO) {
                                                 if (isEnabled) {
                                                     activity.startTweakServiceAction(TweakService.ACTION_START_USB_INTERCEPTOR)
-                                                    snackbarHostState.showSnackbar("USB Interceptor Enabled")
+                                                    withContext(Dispatchers.Main) {
+                                                        showSnack("USB Interceptor Enabled")
+                                                    }
                                                 } else {
                                                     activity.startTweakServiceAction(TweakService.ACTION_STOP_USB_INTERCEPTOR)
-                                                    snackbarHostState.showSnackbar("USB Interceptor Disabled")
+                                                    withContext(Dispatchers.Main) {
+                                                        showSnack("USB Interceptor Disabled")
+                                                    }
                                                 }
                                             }
                                         },
@@ -1189,12 +1210,12 @@ fun TweaksScreen(
                                                         activity.copyTelemetryBinaryFromAssets(context)
                                                         RootUtils.runAsRoot(TweakCommands.ENABLE_TELEMETRY_DISABLE, useMountMaster = true)
                                                         withContext(Dispatchers.Main) {
-                                                            snackbarHostState.showSnackbar("Telemetry Disabled")
+                                                            showSnack("Telemetry Disabled")
                                                         }
                                                     } else {
                                                         RootUtils.runAsRoot(TweakCommands.DISABLE_TELEMETRY_DISABLE, useMountMaster = true)
                                                         withContext(Dispatchers.Main) {
-                                                            snackbarHostState.showSnackbar("Telemetry Enabled")
+                                                            showSnack("Telemetry Enabled")
                                                         }
                                                     }
                                                 }
@@ -1211,7 +1232,7 @@ fun TweaksScreen(
                                         onCheckedChange = { isEnabled ->
                                             cycleWifiOnBoot = isEnabled
                                             sharedPrefs.edit().putBoolean("cycle_wifi_on_boot", isEnabled).apply()
-                                            coroutineScope.launch { snackbarHostState.showSnackbar(if (isEnabled) "Wi-Fi Cycle on Boot Enabled" else "Wi-Fi Cycle on Boot Disabled") }
+                                            showSnack(if (isEnabled) "Wi-Fi Cycle on Boot Enabled" else "Wi-Fi Cycle on Boot Disabled")
                                         },
                                         enabled = isRooted
                                     )
@@ -1241,7 +1262,7 @@ fun TweaksScreen(
                                                         RootUtils.runAsRoot(command)
 
                                                         withContext(Dispatchers.Main) {
-                                                            snackbarHostState.showSnackbar(
+                                                            showSnack(
                                                                 if (isEnabled) "Proximity Sensor Disabled"
                                                                 else "Proximity Sensor Restored"
                                                             )
@@ -1272,14 +1293,14 @@ fun TweaksScreen(
                                                             withContext(Dispatchers.Main) {
                                                                 isLockUpdateFoldersActive = success
                                                                 sharedPrefs.edit().putBoolean("lock_update_folders_is_locked", success).apply()
-                                                                snackbarHostState.showSnackbar(if (success) "Disabled Updater access" else "Failed to disable access")
+                                                                showSnack(if (success) "Disabled Updater access" else "Failed to disable access")
                                                             }
                                                         } else {
                                                             val success = activity.restoreUpdateFolders()
                                                             withContext(Dispatchers.Main) {
                                                                 isLockUpdateFoldersActive = !success
                                                                 sharedPrefs.edit().putBoolean("lock_update_folders_is_locked", !success).apply()
-                                                                snackbarHostState.showSnackbar(if (success) "Enabled Updater access" else "Failed to enable access")
+                                                                showSnack(if (success) "Enabled Updater access" else "Failed to enable access")
                                                             }
                                                         }
                                                     }
@@ -1296,7 +1317,7 @@ fun TweaksScreen(
                                         coroutineScope.launch(Dispatchers.IO) {
                                             RootUtils.runAsRoot("magisk resetprop ro.build.type $type")
                                             withContext(Dispatchers.Main) {
-                                                snackbarHostState.showSnackbar("Build type spoofed to '$type'. Restarting Zygote...")
+                                                showSnack("Build type spoofed to '$type'. Restarting Zygote...")
                                             RootUtils.runAsRoot("setprop ctl.restart zygote")
                                             }
                                         }
@@ -1377,7 +1398,7 @@ fun TweaksScreen(
                                                 val command = if (isEnabled) TweakCommands.DISABLE_TELEPORT_LIMIT else TweakCommands.ENABLE_TELEPORT_LIMIT
                                                 RootUtils.runAsRoot(command)
                                                 withContext(Dispatchers.Main) {
-                                                    snackbarHostState.showSnackbar(if (isEnabled) "Teleport Anywhere Enabled" else "Teleport Anywhere Disabled")
+                                                    showSnack(if (isEnabled) "Teleport Anywhere Enabled" else "Teleport Anywhere Disabled")
                                                 }
                                             }
                                         },
@@ -1503,7 +1524,7 @@ fun TweaksScreen(
                                                 onCheckedChange = { checked ->
                                                     minFreqOnBoot = checked
                                                     sharedPrefs.edit().putBoolean("min_freq_on_boot", checked).apply()
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar(if (checked) "CPU Min Freq on Boot Enabled" else "CPU Min Freq on Boot Disabled") }
+                                                    showSnack(if (checked) "CPU Min Freq on Boot Enabled" else "CPU Min Freq on Boot Disabled")
                                                 },
                                                 enabled = isRooted
                                             )
@@ -1517,10 +1538,14 @@ fun TweaksScreen(
                                                     try {
                                                         if (isMinFreqExecuting) {
                                                             activity.startTweakServiceAction(TweakService.ACTION_START_MIN_FREQ)
-                                                            coroutineScope.launch { snackbarHostState.showSnackbar("CPU Min Freq lock started") }
+                                                            withContext(Dispatchers.Main) {
+                                                                showSnack("CPU Min Freq lock started")
+                                                            }
                                                         } else {
                                                             activity.startTweakServiceAction(TweakService.ACTION_STOP_MIN_FREQ)
-                                                            coroutineScope.launch { snackbarHostState.showSnackbar("CPU Min Freq lock stopped") }
+                                                            withContext(Dispatchers.Main) {
+                                                                showSnack("CPU Min Freq lock stopped")
+                                                            }
                                                         }
                                                         sharedPrefs.edit().putBoolean("min_freq_is_running", isMinFreqExecuting).apply()
                                                     } catch (e: Exception) {
@@ -1568,7 +1593,7 @@ fun TweaksScreen(
                                                     val targetGov = if (checked) "performance" else "schedutil"
                                                     CpuUtils.setGovernor(targetGov)
                                                     isPerfMode = CpuUtils.isPerformanceMode()
-                                                    snackbarHostState.showSnackbar(
+                                                    showSnack(
                                                         if (checked) "CPU set to performance mode" else "CPU set to schedutil mode"
                                                     )
                                                 }
@@ -1657,7 +1682,7 @@ fun TweaksScreen(
                                                 onCheckedChange = { checked ->
                                                     gpuMinFreqOnBoot = checked
                                                     sharedPrefs.edit().putBoolean("gpu_min_freq_on_boot", checked).apply()
-                                                    coroutineScope.launch { snackbarHostState.showSnackbar(if (checked) "GPU Min Freq on Boot Enabled" else "GPU Min Freq on Boot Disabled") }
+                                                    showSnack(if (checked) "GPU Min Freq on Boot Enabled" else "GPU Min Freq on Boot Disabled")
                                                 },
                                                 enabled = isRooted
                                             )
@@ -1671,10 +1696,14 @@ fun TweaksScreen(
                                                     try {
                                                         if (shouldStart) {
                                                             activity.startTweakServiceAction(TweakService.ACTION_START_GPU_MIN_FREQ)
-                                                            coroutineScope.launch { snackbarHostState.showSnackbar("GPU Min Freq lock started") }
+                                                            withContext(Dispatchers.Main) {
+                                                                showSnack("GPU Min Freq lock started")
+                                                            }
                                                         } else {
                                                             activity.startTweakServiceAction(TweakService.ACTION_STOP_GPU_MIN_FREQ)
-                                                            coroutineScope.launch { snackbarHostState.showSnackbar("GPU Min Freq lock stopped") }
+                                                            withContext(Dispatchers.Main) {
+                                                                showSnack("GPU Min Freq lock stopped")
+                                                            }
                                                         }
                                                         sharedPrefs.edit().putBoolean("gpu_min_freq_is_running", isGpuMinFreqRunning).apply()
                                                     } catch (e: Exception) {
@@ -1731,9 +1760,9 @@ fun TweaksScreen(
                                                                 // If script is running, restart it to apply new freq
                                                                 if (isGpuMaxFreqRunning) {
                                                                     activity.startTweakServiceAction(TweakService.ACTION_START_GPU_MAX_FREQ)
-                                                                    coroutineScope.launch { snackbarHostState.showSnackbar("GPU Max Freq lock updated to $freqMhz MHz") }
+                                                                    showSnack("GPU Max Freq lock updated to $freqMhz MHz")
                                                                 } else {
-                                                                     coroutineScope.launch { snackbarHostState.showSnackbar("GPU Max Freq selection saved") }
+                                                                     showSnack("GPU Max Freq selection saved")
                                                                 }
                                                             }
                                                         )
@@ -1747,7 +1776,7 @@ fun TweaksScreen(
                                                     onCheckedChange = { checked ->
                                                         gpuMaxFreqOnBoot = checked
                                                         sharedPrefs.edit().putBoolean("gpu_max_freq_on_boot", checked).apply()
-                                                        coroutineScope.launch { snackbarHostState.showSnackbar(if (checked) "GPU Max Freq on Boot Enabled" else "GPU Max Freq on Boot Disabled") }
+                                                        showSnack(if (checked) "GPU Max Freq on Boot Enabled" else "GPU Max Freq on Boot Disabled")
                                                     },
                                                     enabled = isRooted
                                                 )
@@ -1765,10 +1794,14 @@ fun TweaksScreen(
                                                         if (shouldStart) {
                                                             sharedPrefs.edit().putString("gpu_max_freq_selection", selectedGpuMaxFreq).apply()
                                                             activity.startTweakServiceAction(TweakService.ACTION_START_GPU_MAX_FREQ)
-                                                            coroutineScope.launch { snackbarHostState.showSnackbar("GPU Max Freq lock started at $selectedGpuMaxFreq MHz") }
+                                                            withContext(Dispatchers.Main) {
+                                                                showSnack("GPU Max Freq lock started at $selectedGpuMaxFreq MHz")
+                                                            }
                                                         } else {
                                                             activity.startTweakServiceAction(TweakService.ACTION_STOP_GPU_MAX_FREQ)
-                                                            coroutineScope.launch { snackbarHostState.showSnackbar("GPU Max Freq lock stopped") }
+                                                            withContext(Dispatchers.Main) {
+                                                                showSnack("GPU Max Freq lock stopped")
+                                                            }
                                                         }
                                                         sharedPrefs.edit().putBoolean("gpu_max_freq_is_running", isGpuMaxFreqRunning).apply()
                                                     } catch (e: Exception) {
